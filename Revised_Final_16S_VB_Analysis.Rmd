@@ -1,0 +1,362 @@
+---
+title: "Vulture Bee Diversity Statistics on 16S Illumina Sequences of the Gut Microbiome"
+author: "Jessica Maccaro"
+date: "10/4/2021"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#tinytex::install_tinytex()
+```
+
+Loading vegan for beta diversity analysis then displaying R version 
+
+```{r library, echo=TRUE}
+library(vegan)
+version
+```
+
+## Beta Diversity Stats
+
+####Loading Files
+
+I had to make sure my files were nice and clean in excel. For the mapping file I made sure to remove any blanks, I removed sample 161 because we saw previously it was a weird outlier, I removed all the wasps and baits and I sorted in assending order. For downstream plotting purposes I also had to add a "Code" column where I numerically coded the necrophagy. 1 = Obligate, 2 = Facultative, 3 = Absent.
+
+The OTU table was generated in qiime2 after eliminating the same samples as the meta data file above through filtering. BUT also we lost sample IDs when we specified our sequencing depth. We retained 1,053,000 (44.90%) sequences in 135 (85.44%) samples at sampling depth of 7800. So I went through the metadata file again in excel and removed any samples lost in this step as well so the mapping file matched the OTU table. Note: before doing this I had to transpose the OTU table so that the ASVs were the columns and the sampleIDs were the rows. I also had to make sure to remove the '#' that is in the OTU header so R ould read the header. 
+
+The species mapping file only includes species with at least 3 representatives.The necrophagy mapping file includes all species. 
+
+
+```{r mapping files}
+map.necro <- read.table("Map_nowasp.b.txt", header = T, row.names = 1, sep='\t')
+attach(map.necro)
+
+map.species <- read.table("Map_R_species.txt", header = T, row.names = 1, sep='\t')
+attach(map.species)
+
+```
+
+
+```{r OTU tables, include= TRUE}
+OTU.necrophagy <-read.table("rarif_feat_tab_ordered_transposed.txt", header = T,row.names = 1, sep = "\t")
+OTU.mn <- as.matrix(OTU.necrophagy) 
+
+
+OTU.species <-read.table("OTU_R_Species.txt", header = T,row.names = 1, sep = "\t")
+OTU.ms <- as.matrix(OTU.species) 
+```
+
+
+
+####NMDS Stress
+
+For necrophagy: after making sure the mapping file and OTU table have the sample number of observations (135) I can move on. So we are looking at 135 samples after all the filtering and decontamination steps. After checking lots of different k (from 2-5). k= 5 had a stress below 0.1. 
+
+```{r necrophagy NMDS, include= TRUE}
+BCn.nmds = metaMDS(OTU.mn, distance="bray", k=5, trymax=1000)
+BCn.nmds
+```
+
+For species: the OTU and species have the same number of samples 128.I stuck with a k = 5 because it was below 0.1. When I tried k = 4, it was 0.1056
+
+```{r species NMDS, include= TRUE}
+BCs.nmds = metaMDS(OTU.species, distance="bray", k=5, trymax=1000)
+BCs.nmds
+```
+
+####Figure 3: Microbial Community Composition by Host Species and Diet
+
+I have to add a bunch of colors for species so I'm using this cool package to see which palletes are available to use for color blind folks. 
+
+
+```{r colorblind, echo=TRUE}
+#install.packages("colorBlindness")
+library(colorBlindness)
+displayAvailablePalette(color="black")
+displayAllColors(safeColors, color="white")
+
+```
+
+
+We are using the necrophagy mapping file which includes species with n < 3. I also arranged them from pollenivores to necrophages so the blue are pollen feeding and the most red is obligate necrophage. The ellipses represent the 95% confidence intervals for the diet type. 
+
+
+```{r NMDS Species plot with necrophagy ellipses and necrophagy mapping file, echo=TRUE}
+
+plot(BCn.nmds, display = "sites") 
+orditorp(BCn.nmds, "sites")
+colvec_s <- c(Blue2DarkRed18Steps) 
+
+sp.map.df <- as.data.frame(map.necro)
+sp.map.ord <- sp.map.df
+sp.map.ord$species <- factor(sp.map.ord$species,
+                                 levels = c("angustula",
+                                            "buchwaldi",
+                                            "wheeleri",
+                                            "argyrea",
+                                            "sp.",
+                                            "opaca",
+                                            "flavoscutellata",
+                                            "panamica",
+                                            "costaricensis",
+                                            "mellicolor",
+                                            "musarum",
+                                            "orizabaensis",
+                                            "corvina",
+                                            "ferricauda",
+                                            "fulviventris",
+                                            "silvestriana",
+                                            "necrophaga"))
+
+plot(BCn.nmds, "sites",
+     main ="Microbial Community Composition by Host Species and Diet")
+with(sp.map.ord,
+     points(BCn.nmds,
+            display = "sites",
+            pch = 20,
+            col = colvec_s[sp.map.ord$species]))
+        
+legend("topleft", legend=c("Te. angustula","Te. buchwaldi", "S.wheeleri", "Sc.argyrea", "Scaptotrigona sp.","P.opaca","Pl. flavoscutellata", "M.panamica", "M.costaricensis", "O.mellicolor","Pa. musarum", "Pa. orizabaensis", "Tr. corvina", "Tr. ferricauda", "Tr. fulviventris", "Tr. silvestriana", "Tr. necrophaga"), col=c(Blue2DarkRed18Steps), pch=20, text.font = 8, cex = 0.6)
+
+legend("bottomright", legend=c("Obligate","Facultative","Absent"), col=c("darkorchid","goldenrod1","darkolivegreen"), pch=20, cex = 0.75)
+
+ordiellipse(
+  BCn.nmds,
+  map.necro$Code,
+  display = "sites",
+  conf = 0.95,
+  col = c("darkorchid","goldenrod1","darkolivegreen"),
+  lty = c(1, 2, 3),
+  lwd = 2.5
+)
+
+dev.print(pdf,        # copies the plot to a the PDF file
+          "FinalPlots/Species+NecroNMDS.pdf") 
+
+
+```
+
+####ADONIS
+
+This is to get significance values for the beta diversity (differences in communities by sample).I ran a seperate Adonis for species and necrophagy because they are co-linear so I could not include them in the same model. I used Location which is the specific baits as a strata, but the adonis2 notation is "blocks".The idea is to account for the possibility that the same colony could be at different baits.
+
+I first calculate bray curtis distance matrices for both species and necrophagy.
+
+```{r making bray curtis dist matrix}
+BCn.dist <- vegdist(OTU.mn, distance="bray")
+BCs.dist <- vegdist(OTU.ms, distance="bray")
+```
+
+Then I run PERMANOVA on distances for necrophagy:
+
+```{r Necro Adonis}
+perms.n <- with(map.necro, how(nperm = 1000, blocks = Location))
+adonis2(formula = BCn.dist ~ Necrophagy, permutations = perms.n, data = map.necro, pairwise = TRUE)
+```
+
+Run PERMANOVA on distances for species
+
+```{r species adonis}
+#species
+perms.s <- with(map.species, how(nperm = 1000, blocks = Location))
+adonis2(formula = BCs.dist ~ species, permutations = perms.s, data = map.species, pairwise= TRUE)
+
+```
+
+
+###Beta Dispersion
+
+This shows the different levels of dispersion between samples in each category. Again I run this for both necrophagy and species.The block is the locaton of specific baits like in the adonis. 
+
+Necrophagy:
+
+```{r beta dispersion necro, include= TRUE}
+
+disp.necro = betadisper(BCn.dist, map.necro$Necrophagy)
+perms.bdn <- with(map.necro, how(nperm = 1000, blocks = Location))
+p.w.bd_necro <- permutest(disp.necro, pairwise=TRUE, permutations=perms.bdn)
+p.w.bd_necro
+```
+
+Species: 
+
+```{r beta dispersion species, include= TRUE}
+disp.species = betadisper(BCs.dist, map.species$species)
+perms.bds <- with(map.species, how(nperm = 1000, blocks = Location))
+permutest(disp.species, pairwise=TRUE, permutations=perms.bds)
+```
+
+
+##Alpha Diversity Stats
+
+####Load files
+
+I load in observed_otu alpha diversity files generated in qiime2 with raw ASVs. They went through dada2 in qiime2 so they are ASVs not OTUs. This file only includes species that have 3 or more representatives. 
+
+```{r KW ANOVA}
+
+K_W_n <- read.table("alpha_div_species.txt", header = T, row.names = 1, sep='\t')
+AlDiv.df <- as.data.frame(K_W_n)
+
+```
+
+####Linear Mixed Model 
+
+I am just loading the packages I will need. Also making sure the data is loaded as factors and verifying that they are. Plus checking the distribution of the data, which looks fairly normally distributed. 
+
+```{r LMM, echo=TRUE}
+#Load and install packages
+#install.packages("DHARma")
+library(lme4)
+packageVersion("lme4")
+library(DHARMa)
+packageVersion("DHARma")
+library(car)
+packageVersion("car")
+
+#Load data as factors and check that they are
+res_ASV <- AlDiv.df$observed_otus
+AlDiv.df$Species <- as.factor(AlDiv.df$Species)
+AlDiv.df$Collection <- as.factor(AlDiv.df$Collection)
+AlDiv.df$Location <- as.factor(AlDiv.df$Location)
+AlDiv.df$Necrophagy <- as.factor(AlDiv.df$Necrophagy)
+summary(AlDiv.df)
+#Check the distribution. Looks like a normal distribution so we can use an lmm
+hist(AlDiv.df$observed_otus)
+```
+
+####Necro model
+
+To evaluate the role of necrophagy (absent, facultative, and obligate) we constructed a LMM and then will run a likelihood ratio test to evaluate its importance.
+
+```{r LMM m1, echo=TRUE}
+m1<-lmer(observed_otus~ Necrophagy + (1|Location) + (1|Species), data=AlDiv.df, na.action="na.fail", REML=F)
+Anova(m1)
+summary(m1)
+```
+
+
+```{r LMM m1 checking model assumptions, echo=TRUE}
+plot(m1)
+qqnorm(resid(m1))
+simoutbin500.1<-simulateResiduals(fittedModel=m1, n=250)
+plot(simoutbin500.1)
+```
+
+```{r m1.1, echo = TRUE}
+m1.1<- lmer(observed_otus ~ 1 + (1|Location) + (1|Species), data=AlDiv.df, na.action="na.fail", REML=F)
+anova(m1,m1.1) # value for necrophagy (diet)
+```
+
+####Species model
+
+Since diet and species are colinear, we have to evaluate them in two different models
+
+```{r LMM m2, echo=TRUE}
+#Run models
+m2<-lmer(observed_otus~ Species + Collection + (1|Location), data=AlDiv.df, na.action="na.fail", REML=F)
+vif(m2)
+Anova(m2)
+summary(m2)
+```
+
+
+We included collection substrate as a fixed effect in the species model as its inclusion improved model fit, likely by explaining some of the differences in diet
+
+Then checked the model assumptions:
+
+```{r LMM m2 checking model assumptions, echo=TRUE}
+plot(m2)
+qqnorm(resid(m2))
+simoutbin500.2<-simulateResiduals(fittedModel=m2, n=250)
+plot(simoutbin500.2)
+```
+
+```{r m2.1, echo=TRUE}
+m2.1<-lmer(observed_otus ~ Collection + (1|Location), data=AlDiv.df, na.action="na.fail", REML=F)
+anova(m2,m2.1) # value for species
+```
+
+```{r m2.2, echo = TRUE}
+m2.2 <-lmer(observed_otus ~ Species + (1|Location), data=AlDiv.df, na.action="na.fail", REML=F)
+anova(m2, m2.2) # value for collection substrate
+```
+
+
+####Tukey Tests
+
+Next I ran a tukey test to see which diet significantly different from eachother.
+
+```{r LMM tukey diet, echo=TRUE}
+#install.packages("emmeans")
+library(emmeans)
+packageVersion("emmeans")
+cox1.lm1<-lsmeans(m1, specs="Necrophagy")
+collection_p.h <- pairs(cox1.lm1)
+collection_p.h
+write.csv(collection_p.h, "FinalPlots/revised_necro_p_hoc_updated.tsv")
+```
+
+No significant differences in diet.
+
+I ran a Tukey test on species to get pairwise comparisons. 
+
+```{r LMM tukey species, echo=TRUE}
+cox3.lm2<-lsmeans(m2, specs="Species")
+species_p.h <- pairs(cox3.lm2)
+species_p.h
+write.csv(species_p.h, "FinalPlots/revised_species_post_hoc_updated.tsv")
+```
+
+There are several significant differences between species. 
+
+
+####Figure 2 ASVs by Species and Diet
+
+
+```{r ASVs species + diet plot, echo=TRUE}
+
+library(ggplot2)
+
+#Order the Species by necrophagy
+Sp.ord <- AlDiv.df
+Sp.ord$Species_plot <- factor(Sp.ord$Species_plot,
+                                 levels = c("Te. angustula (n=11)",
+                                            "Te. buchwaldi (n=6)", 
+                                            "Pl. flavoscutellata (n=17)",
+                                            "Pa. musarum (n=19)",
+                                            "Pa. orizabaensis (n=12)",
+                                            "T. corvina (n=7)",
+                                            "T. ferricauda (n=17)",
+                                            "T. fulviventris (n=12)",
+                                            "T. silvestriana (n=7)",
+                                            "T. necrophaga (n=18)"))
+
+#Plot by species 
+bp.sp <- ggplot(Sp.ord, aes(x=Species_plot, y= observed_otus, fill=Necrophagy)) + 
+        geom_boxplot() +
+        theme_classic()+
+        scale_fill_manual(values=c("darkolivegreen","goldenrod1","darkorchid"))+
+        theme(axis.text.x = element_text(angle = 45, hjust= 1.0, size = 8)) +
+        labs(y="ASVs", x="Species")+
+        theme(legend.position="right")+
+        ggtitle("ASVs by Species and Diet")+
+        theme(plot.title = element_text(hjust = 0.5))
+bp.sp
+
+
+
+dev.print(pdf,        # copies the plot to a the PDF file
+          "FinalPlots/K_W_plot_species.pdf") 
+
+```
+
+
+
+
+
